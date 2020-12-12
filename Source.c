@@ -6,7 +6,7 @@
 #include "LTexture.h"
 #include "Timer.h"
 #include "Block.h"
-
+#define MAX(x, y)  ((x) > (y) ? (x) : (y))
 void swap(int* a, int* b) {
 	int temp = *a;
 	*a = *b;
@@ -33,6 +33,7 @@ void swap(int* a, int* b) {
 #define BLOCK_PTSIZE 30
 #define BLOCKS_IN_WIDTH (AREA_GAME_WIDTH/BLOCK_PTSIZE)
 #define BLOCKS_IN_HEIGHT (SCREEN_HEIGHT/BLOCK_PTSIZE)
+#define BLOCKS_GRID_FIRSTLINE 4
 
 /* Devide the screen into several rectangles */
 SDL_Rect gGameRect = { SCREEN_CENTER_X-AREA_GAME_WIDTH/2, 0, AREA_GAME_WIDTH,SCREEN_HEIGHT };
@@ -57,7 +58,7 @@ TTF_Font* gFont = NULL;
 LTexture* gTimeTextTexture = NULL;
 
 
-Block blockGrid[BLOCKS_IN_WIDTH][BLOCKS_IN_HEIGHT] = { 0 };
+Block blockGrid[BLOCKS_IN_WIDTH][BLOCKS_IN_HEIGHT + BLOCKS_GRID_FIRSTLINE] = { 0 };
 
 
 /* Define pieces in this section*/
@@ -100,10 +101,20 @@ typedef struct {
 	int i, j; /*i, j  represent the coordinate of the center block in block grid*/
 } Piece;
 
-Piece gPiece = { 1, 0, 5, 5 };
+Piece gPiece;
 /** TODO: Fill up the declaration of functions**/
 // Declaration of functions
 int sendEvent(int, Piece*);
+
+
+// Declaration of Piece related functions
+int Piece_Display(Piece* p);
+int Piece_Generate(Piece* p);
+int Piece_inValid(Piece* p);
+int Piece_MoveDown(Piece* p);
+int Piece_Pan(Piece*, int);
+int Piece_Rotate(Piece*);
+int Piece_Squeeze(Piece*);
 
 // Piece clearing and displaying
 int Piece_inValid(Piece* p) {
@@ -122,7 +133,7 @@ int Piece_inValid(Piece* p) {
 			printf("Piece exceed edge!\n");
 			return 1;
 		}
-		if (block_j >= BLOCKS_IN_HEIGHT) {
+		if (block_j >= BLOCKS_IN_HEIGHT + BLOCKS_GRID_FIRSTLINE) {
 			printf("Hit base\n");
 			return 2;
 		}
@@ -200,7 +211,13 @@ int Piece_Pan(Piece* p, int to_left) {
 int Piece_Rotate(Piece* p) {
 	Piece newP = *p;
  	newP.angle = (p->angle + 1) % 4;
-	if (Piece_inValid(&newP)) return 0;
+	int type = Piece_inValid(&newP);
+	if (type == 2) {
+		return 0;
+	}
+	if (type == 1) {
+		Piece_Squeeze(&newP);
+	}
 	if (!Piece_Clear(p)) return 0;
 	*p = newP;
 	if (!Piece_Display(p)) return 0;
@@ -211,12 +228,45 @@ int Piece_Rotate(Piece* p) {
 int Piece_Generate(Piece* p) {
 	if (p == NULL) return 0;
 	p->i = rand() % BLOCKS_IN_WIDTH;
-	p->j = 0;
+	p->j = BLOCKS_GRID_FIRSTLINE;
 	p->angle = rand() % 4;
 	p->type = rand() % PIECE_TYPE_CNT;
+
+	Piece_Squeeze(p);
 	return 1;
 }
 
+int Piece_Squeeze(Piece* p) {
+	// Pass a out-of-bound piece to this function and Squeeze it back to game area
+	
+	// 1.Find which block exceed the boundary, and which side of the margin it exceeded
+	int exceeded[4] = { 0 }, left_margin = -1, maxE = 0;
+	for (int i = 0; i < 4; i++) {
+		int dx = delta_x[p->type][p->angle][i], dy = delta_y[p->type][p->angle][i];		
+		int block_i = p->i + dx, block_j = p->j + dy;
+		if (block_i >= BLOCKS_IN_WIDTH) {
+			exceeded[i] = 1;
+			left_margin = 0;
+			maxE = MAX(maxE, block_i - BLOCKS_IN_WIDTH + 1);
+			continue;
+		}
+		if (block_i < 0) {
+			exceeded[i] = 1;
+			left_margin = 1;
+			maxE = MAX(maxE, -block_i);
+			continue;
+		}
+		if (i == 3) {
+			printf("Valid piece, no need to squeeze!\n");
+			return 1;
+		}
+	}
+	if (left_margin) 
+		p->i += maxE;
+	else
+		p->i -= maxE;
+	return 1;
+}
 
 
 
@@ -263,31 +313,31 @@ int init() {
 		return 0;
 	}
 
-	// Initialize SDL_ttf
-	if (TTF_Init() == -1) {
-		printf("Could not initilize TTF! SDL_ttf error:%s", TTF_GetError());
-	}
+// Initialize SDL_ttf
+if (TTF_Init() == -1) {
+	printf("Could not initilize TTF! SDL_ttf error:%s", TTF_GetError());
+}
 
-	// Initialize gTimer
-	gTimer = Timer_New();
+// Initialize gTimer
+gTimer = Timer_New();
 
-	// Registrating self-created event
-	gUserEvent = SDL_RegisterEvents(1);
-	if (gUserEvent == (Uint32)-1) {
-		printf("Not enough user event left!\n");
-		return 0;
-	}
-	
-	// Initializing block grid
-	for (int i = 0, block_x = SCREEN_CENTER_X - AREA_GAME_WIDTH/2 + BLOCK_PTSIZE/2; i < BLOCKS_IN_WIDTH; i++, block_x += BLOCK_PTSIZE) {
-		for (int j = 0, block_y = BLOCK_PTSIZE/2; j < BLOCKS_IN_HEIGHT; j++, block_y += BLOCK_PTSIZE) {
-			blockGrid[i][j].x = block_x;
-			blockGrid[i][j].y = block_y;
-			blockGrid[i][j].texture = NULL;
-		}
-	}
+// Registrating self-created event
+gUserEvent = SDL_RegisterEvents(1);
+if (gUserEvent == (Uint32)-1) {
+	printf("Not enough user event left!\n");
+	return 0;
+}
 
-	return 1;
+// Initializing block grid
+for (int i = 0, block_x = SCREEN_CENTER_X - AREA_GAME_WIDTH / 2 + BLOCK_PTSIZE / 2; i < BLOCKS_IN_WIDTH; i++, block_x += BLOCK_PTSIZE) {
+	for (int j = 0, block_y = BLOCK_PTSIZE / 2 - BLOCKS_GRID_FIRSTLINE * BLOCK_PTSIZE; j < BLOCKS_IN_HEIGHT + BLOCKS_GRID_FIRSTLINE; j++, block_y += BLOCK_PTSIZE) {
+		blockGrid[i][j].x = block_x;
+		blockGrid[i][j].y = block_y;
+		blockGrid[i][j].texture = NULL;
+	}
+}
+
+return 1;
 }
 
 int loadMedia() {
@@ -299,13 +349,13 @@ int loadMedia() {
 
 	// Load media file 
 	loadTexture(gBlock, "resource/block.png", gRenderer);
-	
+
 	return 1;
 }
 
 int renderBackground() {
 	// Clear the screen
-	SDL_SetRenderDrawColor(gRenderer,0xFF,0xFF,0xFF,0xFF);
+	SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0xFF, 0xFF);
 	SDL_RenderFillRect(gRenderer, &gGameRect);
 	SDL_RenderFillRect(gRenderer, &gScoreRect);
 	SDL_RenderFillRect(gRenderer, &gNextBlockRect);
@@ -314,7 +364,7 @@ int renderBackground() {
 
 int renderGameArea() {
 	for (int i = 0; i < BLOCKS_IN_WIDTH; i++) {
-		for (int j = 0; j < BLOCKS_IN_HEIGHT; j++) {
+		for (int j = BLOCKS_GRID_FIRSTLINE; j < BLOCKS_IN_HEIGHT + BLOCKS_GRID_FIRSTLINE; j++) {
 			if (blockGrid[i][j].texture == NULL) continue;
 			renderLTexture(gRenderer, blockGrid[i][j].texture, blockGrid[i][j].x, blockGrid[i][j].y);
 		}
@@ -324,6 +374,7 @@ int renderGameArea() {
 
 int startGame() {
 	// Start game
+	Piece_Generate(&gPiece);
 	Timer_Start(gTimer);
 	return 1;
 }
@@ -340,9 +391,33 @@ int resumeGame() {
 
 int updatePieceDrop(Piece* p, Uint32* lastMoveTime) {
 	Uint32 nowTime = Timer_GetTime(gTimer);
-	if (nowTime - *lastMoveTime > 300) {
+	if (nowTime - *lastMoveTime > 200) {
 		*lastMoveTime = nowTime;
 		sendEvent(0, p);
+	}
+	return 1;
+}
+
+int clearFullLine() {
+	for (int i = BLOCKS_GRID_FIRSTLINE+BLOCKS_IN_HEIGHT-1; i >= BLOCKS_GRID_FIRSTLINE; i--) {
+		int full = 1;
+		for (int j = 0; j < BLOCKS_IN_WIDTH; j++) {
+			if (blockGrid[j][i].texture == NULL) {
+				full = 0;
+				break;
+			}
+		}
+		if (full) {
+			// If this line is full, then chear
+			for (int j = 0; j < BLOCKS_IN_WIDTH; j++) {
+				blockGrid[j][i].texture = NULL;
+			}
+			for (int line = i; line > 0; line--) {
+				for(int j = 0; j < BLOCKS_IN_WIDTH; j++){
+					blockGrid[j][line] = blockGrid[j][line];
+				}
+			}
+		}
 	}
 	return 1;
 }
@@ -393,7 +468,7 @@ int main(int argc, char *args[]) {
 			printf("Could not update the state of the block: %s!", SDL_GetError());
 			return 1;
 		}
-			
+
 		// Deal with events in queue
 		if (SDL_PollEvent(&e)) {
 			if (e.type == SDL_QUIT) {
@@ -430,8 +505,13 @@ int main(int argc, char *args[]) {
 					Piece_Generate(&gPiece);
 				}
 			}
+			if (!clearFullLine()) {
+				printf("Could not update state!");
+				return 1;
+			}
+			
+
 		}
-		Piece_Display(&gPiece);
 		// Clear the screen
 		SDL_SetRenderDrawColor(gRenderer, 0x00, 0x00, 0x00, 0xFF);
 		SDL_RenderClear(gRenderer);

@@ -5,6 +5,3 @@ typedef struct {
 	int x, y;
 	LTexture* texture;
 } Block;
-
-
-
