@@ -138,19 +138,8 @@ int Piece_inValid(Piece* p) {
 			return 2;
 		}
 		if (blockGrid[block_i][block_j].texture != NULL) {
-			// Check if this non NULL block belongs to gPiece
-			// If so, check the next block
-			int in_gPiece = 0;
-			for (int j = 0; j < 4; j++) {
-				if (gPiece.i + delta_x[p->type][p->angle][j] == block_i && gPiece.j + delta_y[p->type][p->angle][j] == block_j) {
-					in_gPiece = 1;
-					break;
-				}
-			}
-			if (in_gPiece) continue;
-			else {
-				return 2;
-			}
+			printf("Hit other blocks!\n");
+			return 2;
 		}
 	}
 	return 0;
@@ -172,7 +161,7 @@ int Piece_Display(Piece* p) {
 	for (int i = 0; i < 4; i++) {
 		int dx = delta_x[p->type][p->angle][i], dy = delta_y[p->type][p->angle][i];		
 		int block_i = p->i + dx, block_j = p->j + dy;
-		blockGrid[block_i][block_j].texture = gBlock;
+		renderLTexture(gRenderer, gBlock, blockGrid[block_i][block_j].x, blockGrid[block_i][block_j].y);
 	}
 	return 1;
 }
@@ -190,9 +179,7 @@ int Piece_MoveDown(Piece* p) {
 			return 0;
 			break;
 		default:
-			if (!Piece_Clear(p)) return 0;
 			*p = newP;
-			if (!Piece_Display(p)) return 0;
 			break;
 	}
 	return 1;
@@ -202,9 +189,7 @@ int Piece_Pan(Piece* p, int to_left) {
 	Piece newP = *p;
 	newP.i = to_left ? (p->i - 1) : (p->i + 1);
 	if (Piece_inValid(&newP)) return 0;
-	if (!Piece_Clear(p)) return 0;
 	*p = newP;
-	if (!Piece_Display(p)) return 0;
 	return 1;
 }
 
@@ -218,9 +203,7 @@ int Piece_Rotate(Piece* p) {
 	if (type == 1) {
 		Piece_Squeeze(&newP);
 	}
-	if (!Piece_Clear(p)) return 0;
 	*p = newP;
-	if (!Piece_Display(p)) return 0;
 	return 1;
 }
 
@@ -265,6 +248,15 @@ int Piece_Squeeze(Piece* p) {
 		p->i += maxE;
 	else
 		p->i -= maxE;
+	return 1;
+}
+
+int Piece_Deconstruct(Piece* p) {
+	for (int i = 0; i < 4; i++) {
+		int dx = delta_x[p->type][p->angle][i], dy = delta_y[p->type][p->angle][i];
+		int block_i = p->i + dx, block_j = p->j + dy;
+		blockGrid[block_i][block_j].texture = gBlock;
+	}
 	return 1;
 }
 
@@ -369,6 +361,7 @@ int renderGameArea() {
 			renderLTexture(gRenderer, blockGrid[i][j].texture, blockGrid[i][j].x, blockGrid[i][j].y);
 		}
 	}
+	Piece_Display(&gPiece);
 	return 1;
 }
 
@@ -414,7 +407,7 @@ int clearFullLine() {
 			}
 			for (int line = i; line > 0; line--) {
 				for(int j = 0; j < BLOCKS_IN_WIDTH; j++){
-					blockGrid[j][line] = blockGrid[j][line];
+					blockGrid[j][line].texture = blockGrid[j][line - 1].texture;
 				}
 			}
 		}
@@ -502,12 +495,10 @@ int main(int argc, char *args[]) {
 					Piece_MoveDown(&gPiece);
 				}
 				else if (e.user.code == 1) {
+					Piece_Deconstruct(&gPiece);
+					clearFullLine();
 					Piece_Generate(&gPiece);
 				}
-			}
-			if (!clearFullLine()) {
-				printf("Could not update state!");
-				return 1;
 			}
 			
 
@@ -518,13 +509,15 @@ int main(int argc, char *args[]) {
 
 		// Render background
 		renderBackground();
+		
+		// Render game area
 		renderGameArea();
 		
 		// Render time text
 		SDL_Color textColor = { 0x50, 0xAF, 0x50, 0xFF };
 		loadFromRenderedText(gTimeTextTexture,Timer_GetStr(gTimer), gRenderer, gFont, textColor);
-
 		renderLTexture(gRenderer, gTimeTextTexture, SCREEN_CENTER_X, SCREEN_CENTER_Y);
+
 		SDL_RenderPresent(gRenderer);
 	}
 
