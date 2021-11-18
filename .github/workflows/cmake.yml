@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: 3.7
       - name: Install Conan
-        run: pip install conan pytest && conan --versionk
+        run: pip install conan
       - name: Install Dependencies
         run: cd ${{github.workspace}}/build && conan install .. --build=missing
       - name: Configure CMake
